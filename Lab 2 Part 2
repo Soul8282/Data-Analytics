@@ -1,0 +1,155 @@
+# EXCERCISE 1
+library(e1071)
+library(ggplot2)
+
+abalone <- read.csv(url("https://archive.ics.uci.edu/ml/machine-learning-databases/abalone/abalone.data"), header = FALSE, sep = ",")
+colnames(abalone) <- c("sex", "length", "diameter", "height", "whole_weight", "shucked_weight", "viscera_weight", "shell_weight", "rings")
+
+abalone$age_group <- cut(abalone$rings, breaks = c(0, 8, 11, 35), labels = c("young", "adult", "old"))
+
+abalone <- abalone[,-1]
+
+classifier_all <- naiveBayes(age_group ~ ., data = abalone)
+pred_all <- predict(classifier_all, abalone)
+contingency_all <- table(pred_all, abalone$age_group)
+print("Contingency Table for All Features:")
+print(contingency_all)
+
+classifier_subset1 <- naiveBayes(age_group ~ length + diameter + shell_weight, data = abalone)
+pred_subset1 <- predict(classifier_subset1, abalone)
+contingency_subset1 <- table(pred_subset1, abalone$age_group)
+print("Contingency Table for Subset 1 (length, diameter, shell_weight):")
+print(contingency_subset1)
+
+classifier_subset2 <- naiveBayes(age_group ~ height + whole_weight + viscera_weight, data = abalone)
+pred_subset2 <- predict(classifier_subset2, abalone)
+contingency_subset2 <- table(pred_subset2, abalone$age_group)
+print("Contingency Table for Subset 2 (height, whole_weight, viscera_weight):")
+print(contingency_subset2)
+
+ggplot(abalone, aes(x = length, fill = age_group)) + 
+  geom_histogram(binwidth = 0.05, alpha = 0.7, position = 'identity') + 
+  labs(title = "Length Distribution by Age Group", x = "Length", y = "Count") +
+  theme_minimal()
+
+ggplot(abalone, aes(x = diameter, fill = age_group)) + 
+  geom_histogram(binwidth = 0.05, alpha = 0.7, position = 'identity') + 
+  labs(title = "Diameter Distribution by Age Group", x = "Diameter", y = "Count") +
+  theme_minimal()
+
+ggplot(abalone, aes(x = shell_weight, fill = age_group)) + 
+  geom_histogram(binwidth = 0.05, alpha = 0.7, position = 'identity') + 
+  labs(title = "Shell Weight Distribution by Age Group", x = "Shell Weight", y = "Count") +
+  theme_minimal()
+
+#EXERCISE 2
+library(class)  
+library(ggplot2)  
+
+
+data(iris)
+
+
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+iris_norm <- as.data.frame(lapply(iris[, 1:4], normalize))
+
+
+set.seed(123)
+sample_size <- floor(0.7 * nrow(iris))
+train_index <- sample(seq_len(nrow(iris)), size = sample_size)
+
+train_data <- iris_norm[train_index, ]
+test_data <- iris_norm[-train_index, ]
+train_labels <- iris[train_index, 5]
+test_labels <- iris[-train_index, 5]
+
+k <- 5  
+knn_pred_all <- knn(train = train_data, test = test_data, cl = train_labels, k = k)
+
+contingency_all <- table(Predicted = knn_pred_all, Actual = test_labels)
+print("Contingency Table for Subset 1 (all features):")
+print(contingency_all)
+
+accuracy_all <- sum(knn_pred_all == test_labels) / length(test_labels)
+print(paste("Accuracy for Subset 1 (all features):", round(accuracy_all, 3)))
+
+train_subset2 <- train_data[, c("Petal.Length", "Petal.Width")]
+test_subset2 <- test_data[, c("Petal.Length", "Petal.Width")]
+
+knn_pred_subset2 <- knn(train = train_subset2, test = test_subset2, cl = train_labels, k = k)
+
+contingency_subset2 <- table(Predicted = knn_pred_subset2, Actual = test_labels)
+print("Contingency Table for Subset 2 (Petal.Length, Petal.Width):")
+print(contingency_subset2)
+
+accuracy_subset2 <- sum(knn_pred_subset2 == test_labels) / length(test_labels)
+print(paste("Accuracy for Subset 2 (Petal.Length, Petal.Width):", round(accuracy_subset2, 3)))
+
+accuracy_vals <- c()
+k_values <- seq(1, 15, by = 2)
+
+for (k in k_values) {
+  knn_pred <- knn(train = train_data, test = test_data, cl = train_labels, k = k)
+  accuracy_vals <- c(accuracy_vals, sum(knn_pred == test_labels) / length(test_labels))
+}
+
+plot(k_values, accuracy_vals, type = "b", main = "Accuracy vs K Value (All Features)", xlab = "K", ylab = "Accuracy")
+
+#EXERCISE 3
+
+library(ggplot2)
+
+
+data(iris)
+
+set.seed(123)
+
+wss <- c()
+ks <- 2:6
+
+for (k in ks) {
+  iris_kmeans <- kmeans(iris[, 1:4], centers = k)
+  wss <- c(wss, iris_kmeans$tot.withinss)
+}
+
+plot(ks, wss, type = "b", main = " Plot for k-Means (Iris Dataset)", xlab = "Number of Clusters (k)", ylab = "Total Within-Cluster")
+
+best_k_iris <- 3
+iris_kmeans <- kmeans(iris[, 1:4], centers = best_k_iris)
+
+iris$cluster <- as.factor(iris_kmeans$cluster)
+
+ggplot(iris, aes(x = Petal.Length, y = Petal.Width, color = cluster)) +
+  geom_point() +
+  labs(title = paste("k-Means Clustering on Iris Dataset (k =", best_k_iris, ")"), x = "Petal Length", y = "Petal Width") +
+  theme_minimal()
+
+abalone <- read.csv(url("https://archive.ics.uci.edu/ml/machine-learning-databases/abalone/abalone.data"), header = FALSE, sep = ",")
+colnames(abalone) <- c("sex", "length", "diameter", "height", "whole_weight", "shucked_weight", "viscera_weight", "shell_weight", "rings")
+
+abalone <- abalone[, -1]
+
+set.seed(123)
+
+wss_abalone <- c()
+ks_abalone <- 2:6
+
+for (k in ks_abalone) {
+  abalone_kmeans <- kmeans(abalone[, 1:7], centers = k)
+  wss_abalone <- c(wss_abalone, abalone_kmeans$tot.withinss)
+}
+
+plot(ks_abalone, wss_abalone, type = "b", main = "Elbow Plot for k-Means (Abalone Dataset)", xlab = "Number of Clusters (k)", ylab = "Total Within-Cluster Sum of Squares")
+
+best_k_abalone <- 3
+abalone_kmeans <- kmeans(abalone[, 1:7], centers = best_k_abalone)
+
+abalone$cluster <- as.factor(abalone_kmeans$cluster)
+
+ggplot(abalone, aes(x = length, y = shell_weight, color = cluster)) +
+  geom_point() +
+  labs(title = paste("k-Means Clustering on Abalone Dataset (k =", best_k_abalone, ")"), x = "Length", y = "Shell Weight") +
+  theme_minimal()
+
