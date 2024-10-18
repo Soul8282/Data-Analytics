@@ -1,0 +1,124 @@
+library(ggplot2)
+library(dplyr)
+library(car)
+
+
+epi_data <- `epi2024results_DA_F24_lab03.(1)`
+
+region1 <- epi_data %>% filter(region == "Southern Asia") 
+region2 <- epi_data %>% filter(region == "Eastern Europe")
+
+ggplot(region1, aes(x = EPI)) +
+  geom_histogram(aes(y = ..density..), bins = 20, fill = "blue", alpha = 0.5) +
+  geom_density(color = "red") +
+  ggtitle("Southern Asia - EPI Distribution") +
+  xlab("EPI") +
+  ylab("Density")
+
+ggplot(region2, aes(x = EPI)) +
+  geom_histogram(aes(y = ..density..), bins = 20, fill = "green", alpha = 0.5) +
+  geom_density(color = "red") +
+  ggtitle("Eastern Europe - EPI Distribution") +
+  xlab("EPI") +
+  ylab("Density")
+
+qqPlot(region1$EPI, main = "QQ Plot - Southern Asia EPI")
+qqPlot(region2$EPI, main = "QQ Plot - Eastern Europe EPI")
+
+#PART 2
+linear_model <- lm(EPI ~ ECO + BDH + MKP + MHP + CHA, data = epi_data)
+summary(linear_model)
+
+ggplot(epi_data, aes(x = ECO, y = CHA)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "red") +
+  ggtitle("ECO vs CHA with Fitted Line") +
+  xlab("ECO") +
+  ylab("CHA")
+
+region_model <- lm(EPI ~ ECO + BDH + MKP + MHP + CHA, data = region2)
+summary(region_model)
+
+PART 3
+library(class)
+library(caret)
+
+knn_data <- epi_data %>% filter(region %in% c("Southern Asia", "Eastern Europe", "Sub-Saharan Africa"))
+
+knn_data_clean <- knn_data %>%
+  filter(!is.na(ECO) & !is.na(BDH) & !is.na(MKP) & !is.na(MHP) & !is.na(CHA))
+
+set.seed(123)  
+train_index <- createDataPartition(knn_data_clean$region, p = 0.7, list = FALSE)
+train_data <- knn_data_clean[train_index,]
+test_data <- knn_data_clean[-train_index,]
+
+knn_model <- knn(train = train_data[, c("ECO", "BDH", "MKP", "MHP", "CHA")], 
+                 test = test_data[, c("ECO", "BDH", "MKP", "MHP", "CHA")], 
+                 cl = train_data$region, k = 3)
+
+conf_matrix <- table(test_data$region, knn_model)
+
+print(conf_matrix)
+
+accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+
+print(paste("Accuracy: ", accuracy))
+
+
+knn_data2_clean <- knn_data2 %>%
+  filter(!is.na(ECO) & !is.na(BDH) & !is.na(MKP) & !is.na(MHP) & !is.na(CHA))
+
+set.seed(123)  # Set seed for reproducibility
+train_index2 <- createDataPartition(knn_data2_clean$region, p = 0.7, list = FALSE)
+train_data2 <- knn_data2_clean[train_index2,]
+test_data2 <- knn_data2_clean[-train_index2,]
+
+knn_model2 <- knn(train = train_data2[, c("ECO", "BDH", "MKP", "MHP", "CHA")], 
+                  test = test_data2[, c("ECO", "BDH", "MKP", "MHP", "CHA")], 
+                  cl = train_data2$region, k = 3)
+
+conf_matrix2 <- table(test_data2$region, knn_model2)
+
+print(conf_matrix2)
+
+accuracy2 <- sum(diag(conf_matrix2)) / sum(conf_matrix2)
+
+print(paste("Accuracy for second model: ", accuracy2))
+
+library(cluster)
+library(dplyr) 
+
+subset_data1 <- epi_data %>% filter(region %in% c("Southern Asia", "Eastern Europe", "Sub-Saharan Africa"))
+subset_data2 <- epi_data %>% filter(region %in% c("Latin America & Caribbean", "Greater Middle East", "North America"))
+
+subset_data1_clean <- subset_data1 %>%
+  filter(!is.na(ECO) & !is.na(BDH) & !is.na(MKP) & !is.na(MHP) & !is.na(CHA))
+
+subset_data2_clean <- subset_data2 %>%
+  filter(!is.na(ECO) & !is.na(BDH) & !is.na(MKP) & !is.na(MHP) & !is.na(CHA))
+
+kmeans_model1 <- kmeans(subset_data1_clean[, c("ECO", "BDH", "MKP", "MHP", "CHA")], centers = 3, nstart = 20)
+kmeans_model2 <- kmeans(subset_data2_clean[, c("ECO", "BDH", "MKP", "MHP", "CHA")], centers = 3, nstart = 20)
+
+print(kmeans_model1)
+
+print(kmeans_model2)
+
+print(paste("WCSS for subset 1: ", kmeans_model1$tot.withinss))
+print(paste("WCSS for subset 2: ", kmeans_model2$tot.withinss))
+
+wcss_values1 <- sapply(1:10, function(k) {
+  kmeans(subset_data1_clean[, c("ECO", "BDH", "MKP", "MHP", "CHA")], centers = k, nstart = 20)$tot.withinss
+})
+
+wcss_values2 <- sapply(1:10, function(k) {
+  kmeans(subset_data2_clean[, c("ECO", "BDH", "MKP", "MHP", "CHA")], centers = k, nstart = 20)$tot.withinss
+})
+
+plot(1:10, wcss_values1, type = "b", col = "blue", 
+     xlab = "Number of clusters (k)", ylab = "WCSS", main = "WCSS vs k for Subset 1")
+
+plot(1:10, wcss_values2, type = "b", col = "green", 
+     xlab = "Number of clusters (k)", ylab = "WCSS", main = "WCSS vs k for Subset 2")
+
