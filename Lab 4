@@ -1,0 +1,135 @@
+library(ggfortify)
+library(e1071)     # For SVM
+library(caret)     # For confusionMatrix and metrics
+library(ggplot2)   # For plotting PCA
+library(dplyr)     # For data manipulation
+
+# PCA with iris dataset
+wine <- read_csv("C:/Users/barry/Downloads/wine/wine.data", col_names = FALSE)
+names(wine) <- c("Type","Alcohol","Malic acid","Ash","Alcalinity of ash","Magnesium","Total phenols","Flavanoids","Nonflavanoid Phenols","Proanthocyanins","Color Intensity","Hue","Od280/od315 of diluted wines","Proline")
+head(wine)
+
+wine$Type <- as.factor(wine$Type)
+
+wine <- wine[,-c(4,5,10)]
+
+pairs.panels(wine[,-1],gap = 0,bg = c("red", "yellow", "blue")[wine$Type],pch=21)
+
+
+# Convert 'Type' to a factor
+wine$Type <- as.factor(wine$Type)
+
+
+# Perform PCA on numeric variables (excluding 'Type')
+pca <- prcomp(wine[, -1], center = TRUE, scale. = TRUE)
+
+# Visualize the dataset using the 1st and 2nd Principal Components
+pca_data <- as.data.frame(pca$x)
+pca_data$Type <- wine$Type
+
+ggplot(pca_data, aes(x = PC1, y = PC2, color = Type)) +
+  geom_point(size = 2) +
+  labs(
+    title = "PCA: Wine Dataset Projected onto PC1 and PC2",
+    x = "1st Principal Component",
+    y = "2nd Principal Component"
+  ) +
+  theme_minimal()
+
+
+# Contributions of variables to PC1
+contributions <- abs(pca$rotation[, 1]) * 100
+contributions_df <- data.frame(Variable = names(contributions), Contribution = contributions)
+contributions_df <- contributions_df %>% arrange(desc(Contribution))
+print(contributions_df)
+
+
+# Split the dataset into training and testing sets
+set.seed(123)
+trainIndex <- createDataPartition(wine$Type, p = 0.7, list = FALSE)
+train_data <- wine[trainIndex, ]
+test_data <- wine[-trainIndex, ]
+
+# Train SVM classifier on all attributes
+svm_full <- svm(Type ~ ., data = train_data, kernel = "linear")
+
+# Predict on test set
+pred_full <- predict(svm_full, test_data)
+
+# Evaluate performance
+conf_full <- confusionMatrix(pred_full, test_data$Type)
+print(conf_full)
+
+
+# Use the first 3 PCs for training and testing
+pc_train <- pca_data[trainIndex, 1:3]
+pc_test <- pca_data[-trainIndex, 1:3]
+pc_train$Type <- train_data$Type
+pc_test$Type <- test_data$Type
+
+# Train SVM classifier on the first 3 PCs
+svm_pc <- svm(Type ~ ., data = pc_train, kernel = "linear")
+
+pred_pc <- predict(svm_pc, pc_test)
+
+# Evaluate performance
+conf_pc <- confusionMatrix(pred_pc, pc_test$Type)
+print(conf_pc)
+
+least_contributing_vars <- tail(contributions_df$Variable, 3)
+reduced_wine <- wine[, !(names(wine) %in% least_contributing_vars)]
+
+# Perform PCA again on reduced dataset
+pca_reduced <- prcomp(reduced_wine[, -1], center = TRUE, scale. = TRUE)
+pca_reduced_data <- as.data.frame(pca_reduced$x)
+pca_reduced_data$Type <- wine$Type
+
+
+# Use the first 3 PCs of the reduced dataset
+reduced_pc_train <- pca_reduced_data[trainIndex, 1:3]
+reduced_pc_test <- pca_reduced_data[-trainIndex, 1:3]
+reduced_pc_train$Type <- train_data$Type
+reduced_pc_test$Type <- test_data$Type
+
+# Train SVM classifier on reduced data projected into the first 3 PCs
+svm_reduced_pc <- svm(Type ~ ., data = reduced_pc_train, kernel = "linear")
+
+pred_reduced_pc <- predict(svm_reduced_pc, reduced_pc_test)
+
+conf_reduced_pc <- confusionMatrix(pred_reduced_pc, reduced_pc_test$Type)
+print(conf_reduced_pc)
+
+# Helper function to calculate metrics
+get_metrics <- function(conf) {
+  by_class <- conf$byClass
+  by_class[is.na(by_class)] <- 0
+  
+  if (!("Pos Pred Value" %in% colnames(by_class)) || !("Sensitivity" %in% colnames(by_class))) {
+    return(data.frame(Precision = NA, Recall = NA, F1 = NA))
+  }
+  
+  precision <- mean(by_class[, "Pos Pred Value"], na.rm = TRUE)
+  recall <- mean(by_class[, "Sensitivity"], na.rm = TRUE)
+  f1 <- mean(2 * (by_class[, "Pos Pred Value"] * by_class[, "Sensitivity"]) /
+               (by_class[, "Pos Pred Value"] + by_class[, "Sensitivity"]), na.rm = TRUE)
+  
+  return(data.frame(Precision = precision, Recall = recall, F1 = f1))
+}
+
+
+metrics_full <- get_metrics(conf_full)
+metrics_pc <- get_metrics(conf_pc)
+metrics_reduced_pc <- get_metrics(conf_reduced_pc)
+
+comparison <- rbind(
+  Full_Model = metrics_full,
+  PCA_Model = metrics_pc,
+  Reduced_PCA_Model = metrics_reduced_pc
+)
+
+# Print the comparison table
+print(comparison)
+
+
+
+
