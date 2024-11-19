@@ -1,0 +1,207 @@
+library(e1071)  
+library(caret)  
+library(class)  
+library(tidyverse) 
+
+wine <- read_csv("C:/Users/barry/Downloads/wine/wine.data", col_names = FALSE)
+colnames(wine) <- c(
+  "class", "Alcohol", "Malicacid", "Ash", "Alcalinity_of_ash", 
+  "Magnesium", "Total_phenols", "Flavanoids", "Nonflavanoid_phenols", 
+  "Proanthocyanins", "Color_intensity", "Hue", "OD280_OD315", "Proline"
+)
+
+# Convert 'class' to a factor
+wine$class <- as.factor(wine$class)
+
+
+set.seed(123)  
+trainIndex <- createDataPartition(wine$class, p = 0.7, list = FALSE)
+wine_train <- wine[trainIndex, ]
+wine_test <- wine[-trainIndex, ]
+
+
+# Train and tune a linear SVM
+set.seed(123)
+tuned_linear <- tune.svm(class ~ ., data = wine_train, kernel = "linear",
+                         cost = 10^(-1:2))  # Tune cost parameter
+print(tuned_linear$best.parameters)
+
+best_linear <- svm(class ~ ., data = wine_train, kernel = "linear",
+                   cost = tuned_linear$best.parameters$cost)
+
+# Predict on test set
+pred_linear <- predict(best_linear, wine_test)
+
+# Train and tune a radial SVM
+set.seed(123)
+tuned_radial <- tune.svm(class ~ ., data = wine_train, kernel = "radial",
+                         cost = 10^(-1:2), gamma = 10^(-2:1))  # Tune cost and gamma
+print(tuned_radial$best.parameters)
+
+best_radial <- svm(class ~ ., data = wine_train, kernel = "radial",
+                   cost = tuned_radial$best.parameters$cost,
+                   gamma = tuned_radial$best.parameters$gamma)
+
+# Predict on test set
+pred_radial <- predict(best_radial, wine_test)
+
+# Scale the features for kNN
+train_scaled <- scale(wine_train[, -1])  # Exclude 'class'
+test_scaled <- scale(wine_test[, -1], 
+                     center = attr(train_scaled, "scaled:center"), 
+                     scale = attr(train_scaled, "scaled:scale"))
+
+# Train and predict using kNN (k = 3)
+set.seed(123)
+pred_knn <- knn(train = train_scaled, test = test_scaled, cl = wine_train$class, k = 3)
+
+
+
+# Define a helper function to calculate metrics
+calculate_metrics <- function(pred, true) {
+  cm <- confusionMatrix(pred, true)  # Confusion matrix
+  precision <- mean(cm$byClass[, "Pos Pred Value"], na.rm = TRUE)
+  recall <- mean(cm$byClass[, "Sensitivity"], na.rm = TRUE)
+  f1 <- mean(2 * (precision * recall) / (precision + recall), na.rm = TRUE)
+  return(data.frame(Precision = precision, Recall = recall, F1 = f1))
+}
+
+# Calculate metrics for each model
+metrics_linear <- calculate_metrics(pred_linear, wine_test$class)
+metrics_radial <- calculate_metrics(pred_radial, wine_test$class)
+metrics_knn <- calculate_metrics(pred_knn, wine_test$class)
+
+# Combine metrics into a comparison table
+results <- rbind(
+  Linear_SVM = metrics_linear,
+  Radial_SVM = metrics_radial,
+  kNN = metrics_knn
+)
+
+# Print the comparison
+print(results)
+
+
+# Scale the selected features for training and testing sets
+train_scaled <- scale(wine_train[, selected_features])  # Scale training features
+test_scaled <- scale(
+  wine_test[, selected_features],
+  center = attr(train_scaled, "scaled:center"),  # Use training set mean
+  scale = attr(train_scaled, "scaled:scale")    # Use training set std. dev.
+)
+
+# Train and predict using kNN (k = 3)
+set.seed(123) 
+pred_knn <- knn(train = train_scaled, test = test_scaled, cl = wine_train$class, k = 3)
+
+conf_knn <- confusionMatrix(pred_knn, wine_test$class)
+
+calculate_metrics <- function(pred, true) {
+  cm <- confusionMatrix(pred, true)  # Create the confusion matrix
+  precision <- cm$byClass[, "Pos Pred Value"]  # Extract precision for all classes
+  recall <- cm$byClass[, "Sensitivity"]        # Extract recall for all classes
+  f1 <- 2 * (precision * recall) / (precision + recall)  # Calculate F1-score
+  # Aggregate the results into a single data frame
+  return(data.frame(Precision = mean(precision, na.rm = TRUE),
+                    Recall = mean(recall, na.rm = TRUE),
+                    F1 = mean(f1, na.rm = TRUE)))
+}
+
+# Calculate metrics for kNN
+metrics_knn <- calculate_metrics(pred_knn, wine_test$class)
+
+
+metrics_linear <- calculate_metrics(pred_linear, wine_test$class)
+metrics_radial <- calculate_metrics(pred_radial, wine_test$class)
+
+# Compare metrics for all models
+results <- rbind(
+  Linear_SVM = metrics_linear,
+  Radial_SVM = metrics_radial,
+  kNN = metrics_knn
+)
+
+# Print the results
+print(results)
+
+
+# Load the dataset
+housing_data <- read.csv("C:/Users/barry/Downloads/NY-House-Dataset.csv")
+
+
+# Convert necessary columns to numeric
+housing_data$PRICE <- as.numeric(housing_data$PRICE)
+housing_data$PROPERTYSQFT <- as.numeric(housing_data$PROPERTYSQFT)
+
+# Remove rows with missing or invalid data
+housing_data <- na.omit(housing_data)
+
+# Handle outliers in PRICE
+threshold <- quantile(housing_data$PRICE, 0.99)  # Top 1% threshold
+housing_data <- housing_data[housing_data$PRICE <= threshold, ]
+
+# Normalize/Scale PRICE and PROPERTYSQFT for better performance
+housing_data$PRICE <- scale(housing_data$PRICE)
+housing_data$PROPERTYSQFT <- scale(housing_data$PROPERTYSQFT)
+
+# Split the data into training and testing sets
+set.seed(123)  # For reproducibility
+trainIndex <- sample(1:nrow(housing_data), 0.7 * nrow(housing_data))
+train_data <- housing_data[trainIndex, ]
+test_data <- housing_data[-trainIndex, ]
+
+# SVM Regression with Hyperparameter Tuning
+set.seed(123)
+tuned_svm <- tune.svm(
+  PRICE ~ PROPERTYSQFT, 
+  data = train_data, 
+  kernel = "radial", 
+  cost = 10^(-1:2), 
+  gamma = 10^(-2:1)
+)
+
+print(tuned_svm$best.parameters)
+
+svm_model <- tuned_svm$best.model
+
+predicted_svm <- predict(svm_model, newdata = test_data)
+
+linear_model <- lm(PRICE ~ PROPERTYSQFT, data = train_data)
+
+predicted_linear <- predict(linear_model, newdata = test_data)
+
+test_data$Predicted_SVM <- predicted_svm
+test_data$Predicted_Linear <- predicted_linear
+
+test_data$Real_PRICE <- test_data$PRICE * attr(housing_data$PRICE, "scaled:scale") + attr(housing_data$PRICE, "scaled:center")
+test_data$Predicted_SVM <- test_data$Predicted_SVM * attr(housing_data$PRICE, "scaled:scale") + attr(housing_data$PRICE, "scaled:center")
+test_data$Predicted_Linear <- test_data$Predicted_Linear * attr(housing_data$PRICE, "scaled:scale") + attr(housing_data$PRICE, "scaled:center")
+
+# Plot Predicted vs. Real Prices for SVM
+ggplot(test_data, aes(x = Real_PRICE, y = Predicted_SVM)) +
+  geom_point(color = "blue") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
+  labs(
+    title = "SVM Regression: Predicted vs Real Price",
+    x = "Real Price",
+    y = "Predicted Price"
+  ) +
+  theme_minimal()
+
+# Plot Predicted vs. Real Prices for Linear Regression
+ggplot(test_data, aes(x = Real_PRICE, y = Predicted_Linear)) +
+  geom_point(color = "green") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
+  labs(
+    title = "Linear Regression: Predicted vs Real Price",
+    x = "Real Price",
+    y = "Predicted Price"
+  ) +
+  theme_minimal()
+
+mse_svm <- mean((test_data$Real_PRICE - test_data$Predicted_SVM)^2)
+mse_linear <- mean((test_data$Real_PRICE - test_data$Predicted_Linear)^2)
+
+# Print MSE for both models
+cat("SVM MSE:", mse_svm, "\n")
+cat("Linear Regression MSE:", mse_linear, "\n")
